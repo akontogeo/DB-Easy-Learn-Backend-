@@ -30,9 +30,7 @@ const defineUserModel = (sequelize) => {
       type: DataTypes.STRING(50),
       allowNull: false,
       unique: true,
-      validate: {
-        isEmail: true
-      }
+      validate: { isEmail: true }
     },
     registration_date: {
       type: DataTypes.DATEONLY,
@@ -44,17 +42,11 @@ const defineUserModel = (sequelize) => {
     tableName: 'user'
   });
 
-  /**
-   * Find a user by their email address.
-   */
-  User.findByEmail = function(email) {
+  User.findByEmail = function (email) {
     return this.findOne({ where: { user_email: email } });
   };
 
-  /**
-   * Find a user by username.
-   */
-  User.findByUsername = function(username) {
+  User.findByUsername = function (username) {
     return this.findOne({ where: { username } });
   };
 
@@ -69,17 +61,19 @@ const mockModel = {
   findByPk: () => Promise.resolve(null),
   create: () => Promise.resolve({}),
   update: () => Promise.resolve([0]),
-  destroy: () => Promise.resolve(0)
+  destroy: () => Promise.resolve(0),
 };
 
-// Lazy initialization function
-export default function getUserModel() {
+// ✅ Named export (για import { getUserModel } ...)
+export function getUserModel() {
   const sequelize = getSequelize();
-  if (!sequelize) {
-    return mockModel;
-  }
+  if (!sequelize) return mockModel;
+
   if (!sequelize.models.User) {
     return defineUserModel(sequelize);
   }
   return sequelize.models.User;
 }
+
+// ✅ Default export (για import getUserModel from ...)
+export default getUserModel;

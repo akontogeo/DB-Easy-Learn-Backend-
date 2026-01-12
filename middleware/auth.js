@@ -1,8 +1,8 @@
 import auth from 'basic-auth';
 import { DEFAULT_ADMIN } from '../config/constants.js';
-import { getUserModel } from '../models/User.js';
-import { getTeacherModel } from '../models/Teacher.js';
-import { getCourseModel } from '../models/Course.js';
+import getUserModel from '../models/User.js';
+import Teacher from '../models/Teacher.js';
+import getCourseModel from '../models/Course.js';
 
 // Middleware for HTTP Basic Authentication (admin-only routes)
 export function basicAuth(req, res, next) {
