@@ -1,16 +1,16 @@
 import express from 'express';
 import * as lessonCtrl from '../controllers/lessonController.js';
 import { authenticate } from '../middleware/authenticate.js';
-import { teacherAuth, verifyCourseOwnership } from '../middleware/auth.js';
+import { teacherAuth, studentAuth, verifyCourseOwnership } from '../middleware/auth.js';
 import { requireBodyFields, requireNonEmptyBodyFields } from '../middleware/validation.js';
 
 const router = express.Router({ mergeParams: true });
 
 /**
- * PUBLIC (students)
+ * STUDENTS (JWT required)
  */
-router.get('/', lessonCtrl.listLessons);
-router.get('/:lessonTitle', lessonCtrl.getLesson);
+router.get('/', authenticate, studentAuth, lessonCtrl.listLessons);
+router.get('/:lessonTitle', authenticate, studentAuth, lessonCtrl.getLesson);
 
 /**
  * TEACHER ONLY (JWT + ownership)

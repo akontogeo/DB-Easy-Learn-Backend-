@@ -6,43 +6,46 @@ import { getSequelize } from '../config/database.js';
  * Extends User table with student-specific information.
  */
 
-const defineStudentModel = (sequelize) => {
-  const Student = sequelize.define('Student', {
-    student_id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      references: {
-        model: 'user',
-        key: 'user_id'
+export const getStudentModel = (sequelize = getSequelize()) => {
+  if (!sequelize) return null;
+
+  // If already defined, return it
+  if (sequelize.models.Student) return sequelize.models.Student;
+
+  // Otherwise define it
+  return sequelize.define(
+    'Student',
+    {
+      student_id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        references: {
+          model: 'user',
+          key: 'user_id'
+        }
+      },
+      age: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      profession: {
+        type: DataTypes.STRING(50),
+        allowNull: true
       }
     },
-    age: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    profession: {
-      type: DataTypes.STRING(50),
-      allowNull: true
+    {
+      timestamps: false,
+      tableName: 'student'
     }
-  }, {
-    timestamps: false,
-    tableName: 'student'
-  });
-
-  return Student;
+  );
 };
 
 // Create a proxy to handle both connected and disconnected states
 const StudentProxy = new Proxy({}, {
   get(target, prop) {
-    const sequelize = getSequelize();
-    if (!sequelize) {
-      return class {}[prop];
-    }
-    if (!sequelize.models.Student) {
-      defineStudentModel(sequelize);
-    }
-    return sequelize.models.Student[prop];
+    const Student = getStudentModel();
+    if (!Student) return undefined;
+    return Student[prop];
   }
 });
 
