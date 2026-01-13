@@ -3,8 +3,9 @@ import { CourseService } from '../services/courseService.js';
 import { EnrollmentService } from '../services/enrollmentService.js';
 import { successResponse, errorResponse } from '../utils/responses.js';
 import { isDbConnected } from '../config/database.js';
-
+import jwt from 'jsonwebtoken';
 // Login with email only
+// Login with email only (NOW RETURNS JWT TOKEN)
 export async function login(req, res, next) {
   try {
     const { email } = req.body;
@@ -24,7 +25,7 @@ export async function login(req, res, next) {
     if (isDbConnected()) {
       const { getSequelize } = await import('../config/database.js');
       const sequelize = getSequelize();
-      
+
       // Check if user is a student
       const [studentResult] = await sequelize.query(
         `SELECT student_id FROM student WHERE student_id = ?`,
@@ -33,7 +34,7 @@ export async function login(req, res, next) {
           type: sequelize.QueryTypes.SELECT
         }
       );
-      
+
       if (studentResult) {
         userRole = 'student';
       } else {
@@ -45,7 +46,7 @@ export async function login(req, res, next) {
             type: sequelize.QueryTypes.SELECT
           }
         );
-        
+
         if (teacherResult) {
           userRole = 'teacher';
         }
@@ -57,7 +58,7 @@ export async function login(req, res, next) {
     if (userRole === 'student' && isDbConnected()) {
       const { getSequelize } = await import('../config/database.js');
       const sequelize = getSequelize();
-      
+
       const [result] = await sequelize.query(
         `SELECT COALESCE(SUM(total_points), 0) as totalPoints
          FROM quiz_attempt
@@ -67,10 +68,11 @@ export async function login(req, res, next) {
           type: sequelize.QueryTypes.SELECT
         }
       );
-      
+
       totalPoints = parseInt(result.totalPoints) || 0;
     }
 
+    // ✅ This is what your frontend expects as "user"
     const profile = {
       userId: user.user_id,
       username: user.username,
@@ -79,11 +81,31 @@ export async function login(req, res, next) {
       points: totalPoints
     };
 
-    return res.json(successResponse(profile, 'Login successful'));
+    // ✅ JWT payload MUST include user_email (teacherAuth expects req.user.user_email)
+    const jwtPayload = {
+      user_id: profile.userId,
+      user_email: profile.email,
+      role: profile.role
+    };
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json(errorResponse('Server error', 'JWT_SECRET is missing in .env'));
+    }
+
+    const token = jwt.sign(jwtPayload, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    // ✅ Now return { token, user } in data
+    return res.json(
+      successResponse(
+        { token, user: profile },
+        'Login successful'
+      )
+    );
   } catch (err) {
     return next(err);
   }
 }
+
 
 // List all users
 export async function listUsers(_, res, next) {
