@@ -1,76 +1,87 @@
-import { Sequelize } from 'sequelize';
+import { Sequelize } from "sequelize";
 
 let sequelize = null;
 let connected = false;
 
 /**
- * Establishes connection to MariaDB database
- * @returns {Promise<boolean>} - Returns true if connection successful, false otherwise
+ * Establish connection to MariaDB using Sequelize.
+ * @returns {Promise<boolean>} true if connected, false otherwise
  */
 async function establishConnection() {
   try {
-    const dbHost = process.env.DB_HOST || 'localhost';
-    const dbPort = process.env.DB_PORT || 3306;
-    const dbName = process.env.DB_NAME || 'easylearn_db';
-    const dbUser = process.env.DB_USER || 'root';
-    const dbPassword = process.env.DB_PASSWORD || '';
+    const dbHost = process.env.DB_HOST || "127.0.0.1";
+    const dbPort = Number(process.env.DB_PORT || 3306);
+    const dbName = process.env.DB_NAME;
+    const dbUser = process.env.DB_USER || "root";
+    const dbPassword = process.env.DB_PASSWORD || "";
+
+    console.log("🔍 DB CONFIG:", {
+      host: dbHost,
+      port: dbPort,
+      name: dbName,
+      user: dbUser,
+      hasPassword: Boolean(dbPassword),
+    });
 
     sequelize = new Sequelize(dbName, dbUser, dbPassword, {
       host: dbHost,
       port: dbPort,
-      dialect: 'mysql',  // Using mysql2 package
-      logging: false, // Set to console.log to see SQL queries
+      dialect: "mariadb",
+      logging: false, // βάλε console.log αν θες να βλέπεις queries
       pool: {
         max: 5,
         min: 0,
         acquire: 30000,
-        idle: 10000
-      }
+        idle: 10000,
+      },
     });
 
-    // Test the connection
     await sequelize.authenticate();
-    console.log('✅ Connected to MariaDB');
+    console.log("✅ Connected to MariaDB");
 
-    // Note: We don't sync models as the database schema already exists
-    // If you need to sync, uncomment the line below:
-    // await sequelize.sync({ alter: false });
-    
-    console.log('✅ Using existing database schema');
+    // ✅ Safe SELECT (avoids the "Cannot delete property 'meta'..." issue)
+    const rows = await sequelize.query(
+      "SELECT DATABASE() AS db, VERSION() AS version",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+    console.log("✅ DB CHECK:", rows[0]);
 
+    // Extra certainty (optional)
+    const comment = await sequelize.query(
+      "SELECT @@version_comment AS comment",
+      { type: Sequelize.QueryTypes.SELECT }
+    );
+    console.log("✅ VERSION COMMENT:", comment[0]?.comment);
+
+    connected = true;
     return true;
   } catch (error) {
-    console.error('❌ Failed to connect to MariaDB:', error.message);
+    console.error("❌ Failed to connect to MariaDB:", error.message);
+    connected = false;
     return false;
   }
 }
 
 /**
  * Connect to MariaDB.
- * Falls back to in-memory mock data if database connection fails.
- * @returns {Promise<void>}
+ * Falls back to in-memory mock data if DB_NAME missing or connection fails.
  */
 export async function connectDatabase() {
-  const dbName = process.env.DB_NAME;
-  
-  // Check if database name is provided
-  if (!dbName) {
-    console.warn('⚠️  DB_NAME not provided: running with in-memory mock data only.');
+  if (!process.env.DB_NAME) {
+    console.warn("⚠️ DB_NAME not provided: running with in-memory mock data only.");
     connected = false;
+    sequelize = null;
     return;
   }
-  
-  // Attempt to connect to MariaDB
-  connected = await establishConnection();
-  
-  if (!connected) {
-    console.warn('⚠️  Falling back to in-memory mock data.');
+
+  const ok = await establishConnection();
+  if (!ok) {
+    console.warn("⚠️ Falling back to in-memory mock data.");
   }
 }
 
 /**
  * Check if database connection is active
- * @returns {boolean} - True if connected to MariaDB, false otherwise
  */
 export function isDbConnected() {
   return connected;
@@ -78,7 +89,6 @@ export function isDbConnected() {
 
 /**
  * Get Sequelize instance
- * @returns {Sequelize|null} - Sequelize instance or null if not connected
  */
 export function getSequelize() {
   return sequelize;

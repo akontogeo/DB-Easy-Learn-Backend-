@@ -1,207 +1,91 @@
-# EasyLearn Backend 
+# EasyLearn Backend
 
-Production-ready Node.js + Express REST API for the EasyLearn educational platform.
+RESTful API backend για educational platform με Node.js, Express και MariaDB.
 
-## Features
+## � Setup & Installation
 
-- **ES Modules** with `async/await` throughout
-- **MariaDB Integration**: Connects to MariaDB database when configured, automatically falls back to in-memory mock data otherwise
-- **Auto-seeding**: Populates database with mock data on first connect (if tables are empty)
-- **Dual-mode Services**: All CRUD operations work seamlessly with both MariaDB and mock data
-- **21 API Endpoints**: Complete REST API with >10 routes covering Users, Courses, Quizzes, Ratings, Progress
-- **Full CRUD Coverage**: GET/POST/PUT/DELETE for Users and Courses resources
-- **Basic Authentication**: Admin endpoints protected with HTTP Basic Auth
-- **Centralized Error Handling**: Consistent error responses with proper HTTP status codes
-- **Request Validation**: Body field validation and business rule enforcement
-- **Swagger/OpenAPI Spec**: Complete API documentation in `swagger.json`
-- **Consistent Response Format**: `{success, data, message}` for all endpoints
+### Προαπαιτούμενα
+- Node.js (v18+)
+- MariaDB Server
+- npm
 
-## Quick Start
+### Βήματα Εγκατάστασης
 
-### 1. Install MariaDB Server
-Download and install MariaDB from https://mariadb.org/download/
+1. **Δημιουργία Database**
+   - Άνοιξε το MySQL Workbench
+   - Τρέξε το SQL script από το **2ο παραδοτέο** για να δημιουργηθεί η βάση δεδομένων και οι πίνακες
 
-During installation:
-- Set a root password
-- Remember your port (default: 3306)
-- Start the MariaDB service
+2. **Clone & Install Dependencies**
+   ```bash
+   git clone <repository-url>
+   cd DB-Easy-Learn-Backend-
+   npm install
+   ```
 
-### 2. Create Database
-Open MariaDB client or your preferred SQL tool and run:
-```sql
-CREATE DATABASE easylearn CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
+3. **Configure Environment**
+   - Αντίγραψε το `.env.example` σε `.env`
+   - Συμπλήρωσε τα MariaDB credentials (DB_USER, DB_PASSWORD)
+   - Δημιούργησε JWT_SECRET:
+     ```bash
+     node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+     ```
+   - Αντέγραψε το output και βάλτο στο `JWT_SECRET` στο `.env`
 
-### 3. Install Dependencies
-```bash
-npm install
-```
+4. **Run Server**
+   ```bash
+   npm start
+   ```
+   
+   Το API θα τρέχει στο `http://localhost:5000`
 
-### 4. Configure Environment
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
+---
 
-Edit `.env` and set your MariaDB credentials:
-```env
-PORT=5000
+## �📚 Περιγραφή
 
-# MariaDB Configuration
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=easylearn
-DB_USER=root
-DB_PASSWORD=your_password_here
+Το EasyLearn είναι μια πλατφόρμα e-learning που επιτρέπει σε καθηγητές να δημιουργούν courses και σε μαθητές να εγγράφονται, να παρακολουθούν μαθήματα και να λύνουν quizzes.
 
-# Admin Credentials
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=adminpass
+### Κύρια Χαρακτηριστικά
 
-NODE_ENV=development
-```
+- **Authentication με JWT** - Secure token-based authentication
+- **Role-Based Access Control** - Διαχωρισμός student/teacher permissions
+- **Course Management** - CRUD operations για courses, lessons, quizzes
+- **Enrollment System** - Students εγγράφονται σε courses
+- **Progress Tracking** - Παρακολούθηση προόδου μαθητών
+- **Rating System** - Reviews και ratings για courses
+- **MariaDB Database** - Persistent storage με Sequelize ORM
 
-**Important**: Update `DB_PASSWORD` with your MariaDB root password!
+## �️ Tech Stack
 
-### 5. Start Server
-```bash
-# Production mode
-npm start
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **Database**: MariaDB
+- **ORM**: Sequelize
+- **Authentication**: JWT (jsonwebtoken)
+- **Password Hashing**: bcrypt
 
-# Development mode (with auto-reload)
-npm run dev
-```
-
-The app will:
-- Connect to your MariaDB database
-- Automatically create tables based on your models
-- Seed initial data if tables are empty
-- Start the server on `http://localhost:5000`
-
-**Note**: If `DB_NAME` is not provided, the app runs with mock data only.
-
-## API Endpoints
-
-All endpoints are mounted at root (no `/api` prefix).
-
-### Health Check
-- `GET /health` - Server health status
-
-### Users (21 total endpoints)
-- `GET /users` - List all users
-- `POST /users` - Create user (requires: username, email, password)
-- `GET /users/:userId` - Get user by ID
-- `PUT /users/:userId` - Update user
-- `DELETE /users/:userId` - Delete user
-- `GET /users/:userId/courses` - Get user's enrolled courses
-- `POST /users/:userId/courses` - Enroll in course (requires: courseId)
-- `DELETE /users/:userId/courses/:courseId` - Withdraw from course
-- `GET /users/:userId/recommendations` - Get course recommendations
-- `GET /users/:userId/courses/:courseId/progress` - Get course progress
-
-### Courses
-- `GET /courses` - List/search courses (supports filters: category, difficulty, premium)
-- `POST /courses` - Add course [Admin] (requires: title, description, category, difficulty, premium, totalPoints)
-- `GET /courses/:courseId` - Get course details
-- `PUT /courses/:courseId` - Edit course [Admin]
-- `DELETE /courses/:courseId` - Remove course [Admin]
-
-### Ratings
-- `GET /courses/:courseId/ratings` - Get course ratings
-- `POST /courses/:courseId/ratings` - Submit rating (requires: userId, stars 1-5, optional: comment)
-
-### Quizzes
-- `GET /courses/:courseId/quizzes/:quizId` - Get quiz questions
-- `POST /courses/:courseId/quizzes/:quizId/submit` - Submit quiz answers (requires: userId, answers array)
-
-## Authentication
-
-Admin endpoints (POST/PUT/DELETE for courses) require HTTP Basic Authentication:
-```bash
-# PowerShell
-$creds = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:adminpass"))
-Invoke-RestMethod -Uri http://localhost:5000/courses -Method Post -Headers @{Authorization="Basic $creds"} -Body ($body | ConvertTo-Json) -ContentType 'application/json'
-
-# curl
-curl -u admin:adminpass -H "Content-Type: application/json" -X POST -d '{"title":"New Course",...}' http://localhost:5000/courses
-```
-
-Default credentials: `admin` / `adminpass` (configure in `.env`)
-
-## Testing Endpoints
-
-### PowerShell Examples
-```powershell
-# Health check
-Invoke-RestMethod -Uri http://localhost:5000/health
-
-# Get course details
-Invoke-RestMethod -Uri http://localhost:5000/courses/1
-
-# Get course ratings
-Invoke-RestMethod -Uri http://localhost:5000/courses/1/ratings
-
-# Submit a rating
-$body = @{ userId = 1; stars = 5; comment = "Great course!" }
-Invoke-RestMethod -Uri http://localhost:5000/courses/1/ratings -Method Post -Body ($body | ConvertTo-Json) -ContentType 'application/json'
-```
-
-### cURL Examples
-```bash
-# Get course
-curl http://localhost:5000/courses/1
-
-# Get ratings
-curl http://localhost:5000/courses/1/ratings
-
-# Submit rating
-curl -H "Content-Type: application/json" -X POST -d '{"userId":1,"stars":5,"comment":"Great!"}' http://localhost:5000/courses/1/ratings
-```
-
-## Project Structure
+## 📁 Project Structure
 
 ```
-├── app.js                 # Express app setup
-├── server.js              # Server entry point
-├── config/
-│   ├── database.js        # MariaDB connection with auto-seeding
-│   └── constants.js       # App constants
-├── controllers/           # Request handlers
-│   ├── courseController.js
-│   ├── userController.js
-│   ├── ratingController.js
-│   └── quizController.js
-├── services/              # Business logic (DB + mock support)
-│   ├── courseService.js
-│   ├── userService.js
-│   ├── ratingService.js
-│   ├── quizService.js
-│   └── progressService.js
-├── models/                # Sequelize models for MariaDB
-│   ├── Course.js
-│   ├── User.js
-│   ├── Rating.js
-│   ├── Quiz.js
-│   └── Progress.js
-├── routes/                # Route definitions
-│   ├── index.js           # Main router
-│   ├── courses.js
-│   ├── users.js
-│   ├── ratings.js
-│   └── quizzes.js
-├── middleware/            # Express middleware
-│   ├── auth.js            # Basic authentication
-│   ├── validation.js      # Request validation
-│   ├── errorHandler.js    # Global error handler
-│   └── logger.js          # HTTP logging
-├── utils/
-│   ├── responses.js       # Response helpers
-│   ├── mockData.js        # Mock data exports
-│   └── mocks/             # Mock data files
-│       ├── courses.js
-│       ├── users.js
-│       ├── reviews.js
-│       ├── quizzes.js
+├── config/          # Database configuration
+├── controllers/     # Route handlers
+├── middleware/      # Authentication, validation, error handling
+├── models/          # Sequelize models
+├── routes/          # API routes
+├── services/        # Business logic
+├── utils/           # Helper functions
+├── app.js           # Express app setup
+└── server.js        # Server entry point
+```
+
+## 🔑 Authentication
+
+Η εφαρμογή χρησιμοποιεί **JWT tokens** για authentication με role-based access control (student/teacher).
+
+## 📝 License
+
+MIT
+
+
 │       └── progress.js
 └── swagger.json           # OpenAPI 3.0 specification
 ```

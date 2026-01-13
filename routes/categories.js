@@ -1,6 +1,7 @@
 import express from 'express';
 import * as categoryCtrl from '../controllers/categoryController.js';
-import { basicAuth } from '../middleware/auth.js';
+import { authenticate } from '../middleware/authenticate.js';
+import { basicAuth, teacherAuth } from '../middleware/auth.js';
 import { requireBodyFields } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -20,8 +21,8 @@ router.get('/', categoryCtrl.listCategories);
 router.get('/teacher/:teacherId', categoryCtrl.getCategoriesByTeacher);
 router.get('/:categoryId', categoryCtrl.getCategory);
 router.get('/:categoryId/courses', categoryCtrl.getCoursesByCategory);
-router.post('/', basicAuth, requireBodyFields(['category_name', 'teacher_id']), categoryCtrl.createCategory);
-router.put('/:categoryId', basicAuth, categoryCtrl.updateCategory);
-router.delete('/:categoryId', basicAuth, categoryCtrl.deleteCategory);
+router.post('/', authenticate, teacherAuth, requireBodyFields(['category_name', 'teacher_id']), categoryCtrl.createCategory);
+router.put('/:categoryId', authenticate, teacherAuth, categoryCtrl.updateCategory);
+router.delete('/:categoryId', authenticate, basicAuth, categoryCtrl.deleteCategory);
 
 export default router;

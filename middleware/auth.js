@@ -1,107 +1,226 @@
 import auth from 'basic-auth';
 import { DEFAULT_ADMIN } from '../config/constants.js';
-import { getUserModel } from '../models/User.js';
+import getUserModel from '../models/User.js';
 import { getTeacherModel } from '../models/Teacher.js';
-import { getCourseModel } from '../models/Course.js';
+import { getStudentModel } from '../models/Student.js';
+import getCourseModel from '../models/Course.js';
 
-// Middleware for HTTP Basic Authentication (admin-only routes)
+/**
+ * Admin Basic Auth (for admin-only routes)
+ */
 export function basicAuth(req, res, next) {
   const credentials = auth(req);
-  if (!credentials || credentials.name !== DEFAULT_ADMIN.username || credentials.pass !== DEFAULT_ADMIN.password) {
+
+  if (
+    !credentials ||
+    credentials.name !== DEFAULT_ADMIN.username ||
+    credentials.pass !== DEFAULT_ADMIN.password
+  ) {
     res.setHeader('WWW-Authenticate', 'Basic realm="EasyLearn"');
-    return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Invalid credentials' });
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Invalid credentials'
+    });
   }
+
   next();
 }
 
-// Middleware for teacher authentication via email in request body
+/**
+ * Teacher authentication using teacher_email from request body
+ * - verifies user exists
+ * - verifies user is a teacher
+ * - sets req.authenticatedTeacherId
+ */
 export async function teacherAuth(req, res, next) {
   try {
-    const { teacher_email } = req.body;
-    
-    if (!teacher_email) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Bad Request', 
-        message: 'teacher_email is required' 
+    const user = req.user;
+
+    if (!user || !user.user_email) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Not logged in'
       });
     }
 
-    // Find user by email
     const UserModel = getUserModel();
-    const user = await UserModel.findOne({ where: { user_email: teacher_email } });
-    
-    if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Unauthorized', 
-        message: 'Invalid teacher email' 
+    const dbUser = await UserModel.findOne({
+      where: { user_email: user.user_email }
+    });
+
+    if (!dbUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Invalid user'
       });
     }
 
-    // Check if user is a teacher
     const TeacherModel = getTeacherModel();
-    const teacher = await TeacherModel.findOne({ where: { teacher_id: user.user_id } });
-    
+    const teacher = await TeacherModel.findOne({
+      where: { teacher_id: dbUser.user_id }
+    });
+
     if (!teacher) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Forbidden', 
-        message: 'User is not a teacher' 
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'User is not a teacher'
       });
     }
 
-    // Store teacher_id in request for later use
     req.authenticatedTeacherId = teacher.teacher_id;
     next();
-  } catch (error) {
-    console.error('Teacher auth error:', error);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Internal Server Error', 
-      message: 'Authentication failed' 
+  } catch (err) {
+    console.error('Teacher auth error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Authentication failed'
     });
   }
 }
 
-// Middleware to verify teacher owns the course (for PUT/DELETE operations)
+/**
+ * Ownership check: teacher can only edit/delete their own courses
+ * Requires teacherAuth to have run before it.
+ */
 export async function verifyCourseOwnership(req, res, next) {
   try {
-    const { courseId } = req.params;
     const teacherId = req.authenticatedTeacherId;
+    const { courseId } = req.params;
 
     if (!teacherId) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Unauthorized', 
-        message: 'Authentication required' 
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Teacher not authenticated'
       });
     }
 
-    // Check if course exists and belongs to teacher
     const CourseModel = getCourseModel();
-    const course = await CourseModel.findOne({ 
-      where: { 
-        course_id: courseId,
-        teacher_id: teacherId 
-      } 
-    });
+    const course = await CourseModel.findByPk(courseId);
 
     if (!course) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Forbidden', 
-        message: 'You do not own this course' 
+      return res.status(404).json({
+        success: false,
+        error: 'Not found',
+        message: 'Course not found'
+      });
+    }
+
+    if (String(course.teacher_id) !== String(teacherId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Not your course'
+      });
+    }
+
+    req.course = course;
+    next();
+  } catch (err) {
+    console.error('Ownership check error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Ownership check failed'
+    });
+  }
+}
+
+/**
+ * Student authentication
+ * - verifies user exists
+ * - verifies user is a student
+ * - sets req.authenticatedStudentId
+ */
+export async function studentAuth(req, res, next) {
+  try {
+    const user = req.user;
+
+    if (!user || !user.user_email) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Not logged in'
+      });
+    }
+
+    const UserModel = getUserModel();
+    const dbUser = await UserModel.findOne({
+      where: { user_email: user.user_email }
+    });
+
+    if (!dbUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Invalid user'
+      });
+    }
+
+    const StudentModel = getStudentModel();
+    const student = await StudentModel.findOne({
+      where: { student_id: dbUser.user_id }
+    });
+
+    if (!student) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'User is not a student'
+      });
+    }
+
+    req.authenticatedStudentId = student.student_id;
+    next();
+  } catch (err) {
+    console.error('Student auth error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Authentication failed'
+    });
+  }
+}
+
+/**
+ * Ownership check: user can only access their own data
+ * Requires authenticate to have run before it.
+ * Checks if the userId in params matches the logged-in user
+ */
+export async function verifyUserOwnership(req, res, next) {
+  try {
+    const user = req.user;
+    const { userId } = req.params;
+
+    if (!user || !user.user_id) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'User not authenticated'
+      });
+    }
+
+    // Convert both to string for comparison
+    if (String(user.user_id) !== String(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden',
+        message: 'Cannot access another user\'s data'
       });
     }
 
     next();
-  } catch (error) {
-    console.error('Course ownership verification error:', error);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Internal Server Error', 
-      message: 'Verification failed' 
+  } catch (err) {
+    console.error('User ownership check error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Ownership check failed'
     });
   }
 }

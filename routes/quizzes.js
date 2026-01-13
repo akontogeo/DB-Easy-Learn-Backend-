@@ -1,19 +1,19 @@
 import express from 'express';
 import * as quizCtrl from '../controllers/quizController.js';
-import { requireBodyFields } from '../middleware/validation.js';
+import { authenticate } from '../middleware/authenticate.js';
+import { teacherAuth, studentAuth, verifyCourseOwnership } from '../middleware/auth.js';
 
-// mergeParams allows access to :courseId from parent route
 const router = express.Router({ mergeParams: true });
 
-/**
- * Quiz routes (nested under /courses/:courseId/quizzes)
- * GET  /courses/:courseId/quizzes        - List all quizzes for course
- * GET  /courses/:courseId/quizzes/:quizId - Get specific quiz with questions
- * POST /courses/:courseId/quizzes/:quizId/submit - Submit quiz answers
- */
+// STUDENTS (JWT required)
+router.get('/', authenticate, studentAuth, quizCtrl.listQuizzes);
+router.get('/:quizId', authenticate, studentAuth, quizCtrl.getQuiz);
+router.post('/:quizId/submit', authenticate, studentAuth, quizCtrl.submitQuiz);
 
-router.get('/', quizCtrl.listQuizzes);
-router.get('/:quizId', quizCtrl.getQuiz);
-router.post('/:quizId/submit', requireBodyFields(['userId','answers']), quizCtrl.submitQuiz);
+// TEACHER ONLY (must own the course)
+router.get('/:quizId/teacher', authenticate, teacherAuth, verifyCourseOwnership, quizCtrl.getQuiz);
+router.post('/', authenticate, teacherAuth, verifyCourseOwnership, quizCtrl.createQuiz);
+router.put('/:quizId', authenticate, teacherAuth, verifyCourseOwnership, quizCtrl.updateQuiz);
+router.delete('/:quizId', authenticate, teacherAuth, verifyCourseOwnership, quizCtrl.deleteQuiz);
 
 export default router;

@@ -20,12 +20,14 @@ export async function listLessons(req, res, next) {
 export async function getLesson(req, res, next) {
   try {
     const { courseId, lessonTitle } = req.params;
-    const lesson = await LessonService.getLesson(courseId, decodeURIComponent(lessonTitle));
-    
+    const decodedTitle = decodeURIComponent(lessonTitle);
+
+    const lesson = await LessonService.getLesson(courseId, decodedTitle);
+
     if (!lesson) {
       return res.status(404).json(errorResponse('Not found', 'Lesson not found'));
     }
-    
+
     res.json(successResponse(lesson, 'Lesson retrieved'));
   } catch (err) {
     next(err);
@@ -33,19 +35,24 @@ export async function getLesson(req, res, next) {
 }
 
 /**
- * Create a new lesson (admin only)
+ * Create a new lesson (teacher + ownership)
+ * NOTE: teacherAuth + verifyCourseOwnership already ran
  */
 export async function createLesson(req, res, next) {
   try {
     const { courseId } = req.params;
-    const payload = req.body;
-    
+
+    const payload = { ...req.body };
+
+    // Δεν θες να αποθηκεύσεις email στο lesson record
+    delete payload.teacher_email;
+
     const created = await LessonService.create(courseId, payload);
-    
+
     if (!created) {
       return res.status(500).json(errorResponse('Error', 'Failed to create lesson'));
     }
-    
+
     res.status(201).json(successResponse(created, 'Lesson created'));
   } catch (err) {
     next(err);
@@ -53,19 +60,22 @@ export async function createLesson(req, res, next) {
 }
 
 /**
- * Update a lesson (admin only)
+ * Update a lesson (teacher + ownership)
  */
 export async function updateLesson(req, res, next) {
   try {
     const { courseId, lessonTitle } = req.params;
-    const payload = req.body;
-    
-    const updated = await LessonService.update(courseId, decodeURIComponent(lessonTitle), payload);
-    
+    const decodedTitle = decodeURIComponent(lessonTitle);
+
+    const payload = { ...req.body };
+    delete payload.teacher_email;
+
+    const updated = await LessonService.update(courseId, decodedTitle, payload);
+
     if (!updated) {
       return res.status(404).json(errorResponse('Not found', 'Lesson not found'));
     }
-    
+
     res.json(successResponse(updated, 'Lesson updated'));
   } catch (err) {
     next(err);
@@ -73,18 +83,19 @@ export async function updateLesson(req, res, next) {
 }
 
 /**
- * Delete a lesson (admin only)
+ * Delete a lesson (teacher + ownership)
  */
 export async function deleteLesson(req, res, next) {
   try {
     const { courseId, lessonTitle } = req.params;
-    
-    const deleted = await LessonService.remove(courseId, decodeURIComponent(lessonTitle));
-    
+    const decodedTitle = decodeURIComponent(lessonTitle);
+
+    const deleted = await LessonService.remove(courseId, decodedTitle);
+
     if (!deleted) {
       return res.status(404).json(errorResponse('Not found', 'Lesson not found'));
     }
-    
+
     res.status(204).end();
   } catch (err) {
     next(err);

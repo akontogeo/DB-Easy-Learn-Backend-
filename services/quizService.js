@@ -1,175 +1,284 @@
-import { quizzes as mockQuizzes } from '../utils/mockData.js';
+import { isDbConnected, getSequelize } from '../config/database.js';
 import getQuizModel from '../models/Quiz.js';
 import getQuestionModel from '../models/Question.js';
-import getAnswerModel from '../models/Answer.js';import getQuizAttemptModel from '../models/QuizAttempt.js';import { isDbConnected } from '../config/database.js';
+import getAnswerModel from '../models/Answer.js';
+import getQuizAttemptModel from '../models/QuizAttempt.js';
 
-/**
- * QuizService provides operations for quizzes.
- * Uses MariaDB if connected, otherwise falls back to in-memory mock data.
- */
 export const QuizService = {
-  /**
-   * List all quizzes for a course.
-   * @param {number} courseId - The course's ID
-   * @returns {Promise<Array>} Array of quiz objects
-   */
   async listByCourse(courseId) {
-    if (isDbConnected()) {
-      const QuizModel = getQuizModel();
-      const quizzes = await QuizModel.findAll({
-        where: { course_id: Number(courseId) },
-        order: [['quiz_id', 'ASC']]
-      });
-      return quizzes.map(q => q.toJSON());
-    }
-    return mockQuizzes.filter(q => String(q.courseId) === String(courseId));
+    if (!isDbConnected()) return [];
+
+    const Quiz = getQuizModel();
+    const quizzes = await Quiz.findAll({
+      where: { course_id: Number(courseId) },
+      order: [['quiz_id', 'ASC']]
+    });
+
+    return quizzes.map(q => q.toJSON());
   },
 
-  /**
-   * Get a quiz with its questions and answers.
-   * @param {number} courseId - The course's ID
-   * @param {number} quizId - The quiz's ID
-   * @returns {Promise<Object|null>} Quiz object with questions and answers
-   */
-  async getQuiz(courseId, quizId) {
-    if (isDbConnected()) {
-      const QuizModel = getQuizModel();
-      const QuestionModel = getQuestionModel();
-      const AnswerModel = getAnswerModel();
-      
-      // Get quiz
-      const quiz = await QuizModel.findOne({ 
-        where: { 
-          quiz_id: Number(quizId),
-          course_id: Number(courseId) 
-        } 
-      });
-      
-      if (!quiz) return null;
-      
-      const quizData = quiz.toJSON();
-      
-      // Get questions for this quiz
-      const questions = await QuestionModel.findAll({
-        where: { quiz_id: Number(quizId) },
-        order: [['question_number', 'ASC']]
-      });
-      
-      // Get all answers for these questions
-      const answers = await AnswerModel.findAll({
-        where: { quiz_id: Number(quizId) },
-        order: [['question_number', 'ASC'], ['answer_number', 'ASC']]
-      });
-      
-      // Format questions with their answers
-      quizData.questions = questions.map(q => {
-        const questionData = q.toJSON();
-        const questionAnswers = answers
-          .filter(a => a.question_number === questionData.question_number)
-          .map(a => ({
-            answer_number: a.answer_number,
-            answer_text: a.answer_text,
-            is_correct: a.is_correct
-          }));
-        
-        return {
-          question_number: questionData.question_number,
-          question_text: questionData.question_text,
-          question_points: questionData.question_points,
-          answers: questionAnswers
-        };
-      });
-      
-      return quizData;
-    }
-    
-    // Fallback to mock data
-    return mockQuizzes.find(q => String(q.quizId) === String(quizId) && String(q.courseId) === String(courseId));
-  },
+  async getQuizWithQuestions(courseId, quizId, { includeCorrect = false } = {}) {
+    if (!isDbConnected()) return null;
 
-  /**
-   * Grade quiz by comparing submitted answers with correct answers.
-   * Also saves the attempt to the quiz_attempt table.
-   * @param {number} courseId - The course's ID
-   * @param {number} quizId - The quiz's ID
-   * @param {Object} submission - Submitted answers {userId, answers: [{question_number, answer_number}]}
-   * @returns {Promise<Object|null>} Score result
-   */
-  async submitAnswers(courseId, quizId, submission) {
-    const quiz = await this.getQuiz(courseId, quizId);
+    const Quiz = getQuizModel();
+    const Question = getQuestionModel();
+    const Answer = getAnswerModel();
+
+    const quiz = await Quiz.findOne({
+      where: { quiz_id: Number(quizId) }
+    });
     if (!quiz) return null;
-    
-    const submittedAnswers = submission.answers || [];
-    const userId = submission.userId;
-    let score = 0;
-    let totalPoints = 0;
-    
-    if (quiz.questions) {
-      quiz.questions.forEach((question) => {
-        totalPoints += question.question_points || 1;
-        
-        // Find submitted answer for this question
-        const submitted = submittedAnswers.find(
-          a => Number(a.question_number) === Number(question.question_number)
-        );
-        
-        if (submitted && question.answers) {
-          // Check if the submitted answer is correct
-          const correctAnswer = question.answers.find(a => a.is_correct);
-          if (correctAnswer && Number(submitted.answer_number) === Number(correctAnswer.answer_number)) {
-            score += question.question_points || 1;
-          }
-        }
+
+    const questions = await Question.findAll({
+      where: { quiz_id: Number(quizId) },
+      order: [['question_number', 'ASC']]
+    });
+
+    const questionsWithAnswers = [];
+    for (const q of questions) {
+      const answers = await Answer.findAll({
+        where: {
+          quiz_id: Number(quizId),
+          question_number: q.question_number
+        },
+        order: [['answer_number', 'ASC']]
       });
-      
-      const result = { 
-        score, 
-        totalPoints,
-        percentage: totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0,
-        totalQuestions: quiz.questions.length 
-      };
-      
-      // Save quiz attempt to database
-      if (isDbConnected() && userId) {
-        try {
-          const QuizAttemptModel = getQuizAttemptModel();
-          
-          // Check if attempt already exists (update) or create new one
-          const existingAttempt = await QuizAttemptModel.findOne({
-            where: {
-              quiz_id: Number(quizId),
-              student_id: Number(userId)
-            }
-          });
-          
-          if (existingAttempt) {
-            // Update existing attempt
-            await QuizAttemptModel.update(
-              { total_points: score },
-              {
-                where: {
-                  quiz_id: Number(quizId),
-                  student_id: Number(userId)
-                }
-              }
-            );
-          } else {
-            // Create new attempt
-            await QuizAttemptModel.create({
-              quiz_id: Number(quizId),
-              student_id: Number(userId),
-              total_points: score
-            });
-          }
-        } catch (err) {
-          console.error('Error saving quiz attempt:', err);
-          // Continue even if saving fails - return the result
+
+      const cleanAnswers = answers.map(a => {
+        const obj = a.toJSON();
+        if (!includeCorrect) delete obj.is_correct;
+        return obj;
+      });
+
+      questionsWithAnswers.push({
+        ...q.toJSON(),
+        answers: cleanAnswers
+      });
+    }
+
+    return {
+      ...quiz.toJSON(),
+      questions: questionsWithAnswers
+    };
+  },
+
+  /**
+   * Teacher: create quiz + questions + answers
+   */
+  async createQuizWithQuestions(courseId, payload) {
+    if (!isDbConnected()) return null;
+
+    const sequelize = getSequelize();
+    const Quiz = getQuizModel();
+    const Question = getQuestionModel();
+    const Answer = getAnswerModel();
+
+    return sequelize.transaction(async (t) => {
+      // create quiz
+      const createdQuiz = await Quiz.create(
+        {
+          course_id: Number(courseId),
+          quiz_title: payload.quiz_title
+        },
+        { transaction: t }
+      );
+
+      // create questions + answers
+      for (let i = 0; i < payload.questions.length; i++) {
+        const q = payload.questions[i];
+        const pts = Number(q.question_points);
+        const safePoints = Number.isFinite(pts) ? pts : 1;
+        const createdQuestion = await Question.create(
+          {
+            course_id: Number(courseId),
+            quiz_id: createdQuiz.quiz_id,
+            question_number: i + 1, // ✅ add question_number
+            question_text: q.question_text,
+            question_points: safePoints
+          },
+          { transaction: t }
+        );
+
+        for (let j = 0; j < q.answers.length; j++) {
+          const a = q.answers[j];
+          await Answer.create(
+            {
+              quiz_id: createdQuiz.quiz_id,
+              question_number: createdQuestion.question_number,
+              answer_number: j + 1,
+              answer_text: a.answer_text,
+              is_correct: Boolean(a.is_correct)
+            },
+            { transaction: t }
+          );
         }
       }
-      
-      return result;
+
+      // return full quiz for teacher
+      const full = await this.getQuizWithQuestions(courseId, createdQuiz.quiz_id, { includeCorrect: true });
+      return full;
+    });
+  },
+
+  /**
+   * Teacher: update title and REPLACE all questions+answers
+   */
+  async updateQuizReplaceAll(courseId, quizId, payload) {
+    if (!isDbConnected()) return null;
+
+    const sequelize = getSequelize();
+    const Quiz = getQuizModel();
+    const Question = getQuestionModel();
+    const Answer = getAnswerModel();
+
+    return sequelize.transaction(async (t) => {
+      const quiz = await Quiz.findOne({
+        where: { course_id: Number(courseId), quiz_id: Number(quizId) },
+        transaction: t
+      });
+      if (!quiz) return null;
+
+      await Quiz.update(
+        { quiz_title: payload.quiz_title },
+        { where: { course_id: Number(courseId), quiz_id: Number(quizId) }, transaction: t }
+      );
+
+      // delete old answers -> questions
+      await Answer.destroy({
+        where: { quiz_id: Number(quizId) },
+        transaction: t
+      });
+      await Question.destroy({
+        where: { quiz_id: Number(quizId) },
+        transaction: t
+      });
+
+      // recreate questions + answers
+      for (let i = 0; i < payload.questions.length; i++) {
+        const q = payload.questions[i];
+        const pts = Number(q.question_points);
+        const safePoints = Number.isFinite(pts) ? pts : 1;
+        const createdQuestion = await Question.create(
+          {
+            course_id: Number(courseId),
+            quiz_id: Number(quizId),
+            question_number: i + 1, // ✅ add question_number
+            question_text: q.question_text,
+            question_points: safePoints
+          },
+          { transaction: t }
+        );
+
+        for (let j = 0; j < q.answers.length; j++) {
+          const a = q.answers[j];
+          await Answer.create(
+            {
+              quiz_id: Number(quizId),
+              question_number: createdQuestion.question_number,
+              answer_number: j + 1,
+              answer_text: a.answer_text,
+              is_correct: Boolean(a.is_correct)
+            },
+            { transaction: t }
+          );
+        }
+      }
+
+      const full = await this.getQuizWithQuestions(courseId, quizId, { includeCorrect: true });
+      return full;
+    });
+  },
+
+  /**
+   * Teacher: delete quiz + questions + answers
+   */
+  async removeQuiz(courseId, quizId) {
+    if (!isDbConnected()) return false;
+
+    const sequelize = getSequelize();
+    const Quiz = getQuizModel();
+    const Question = getQuestionModel();
+    const Answer = getAnswerModel();
+    const QuizAttempt = getQuizAttemptModel();
+
+    return sequelize.transaction(async (t) => {
+      // attempts first (FK safety)
+      await QuizAttempt.destroy({
+        where: { quiz_id: Number(quizId) },
+        transaction: t
+      });
+
+      await Answer.destroy({
+        where: { quiz_id: Number(quizId) },
+        transaction: t
+      });
+
+      await Question.destroy({
+        where: { quiz_id: Number(quizId) },
+        transaction: t
+      });
+
+      const deleted = await Quiz.destroy({
+        where: { quiz_id: Number(quizId) },
+        transaction: t
+      });
+
+      return deleted > 0;
+    });
+  },
+
+  /**
+   * Student submit (already existed)
+   */
+  async submitQuiz(courseId, quizId, studentId, answers) {
+    if (!isDbConnected()) return null;
+
+    const Question = getQuestionModel();
+    const Answer = getAnswerModel();
+    const QuizAttempt = getQuizAttemptModel();
+
+    // Load all questions
+    const questions = await Question.findAll({
+      where: { quiz_id: Number(quizId) }
+    });
+
+
+    // answers is now an array of { question_number, answer_number }
+    // Convert to map for easier lookup
+    const answersMap = {};
+    if (Array.isArray(answers)) {
+      for (const a of answers) {
+        answersMap[a.question_number] = a.answer_number;
+      }
     }
-    
-    return { score: 0, totalPoints: 0, percentage: 0, totalQuestions: 0 };
+
+    let score = 0;
+    for (const q of questions) {
+      const correctAnswer = await Answer.findOne({
+        where: {
+          quiz_id: Number(quizId),
+          question_number: q.question_number,
+          is_correct: true
+        }
+      });
+
+      const selected = answersMap[q.question_number];
+      if (correctAnswer && Number(selected) === Number(correctAnswer.answer_number)) {
+        score += Number(q.question_points);
+      }
+    }
+
+    const createdAttempt = await QuizAttempt.create({
+      student_id: Number(studentId),
+      course_id: Number(courseId),
+      quiz_id: Number(quizId),
+      total_points: score,
+      attempt_date: new Date()
+    });
+
+    return {
+      attempt: createdAttempt.toJSON(),
+      totalPoints: score
+    };
   }
 };

@@ -10,7 +10,12 @@ export async function listCourses(req, res, next) {
     if (req.query.premium !== undefined) filters.premium = req.query.premium === 'true';
 
     const data = await CourseService.list(filters);
-    if (!data || data.length === 0) return res.status(204).json(successResponse([], 'No courses found'));
+
+    // Send 200 with [] (not 204 with body)
+    if (!data || data.length === 0) {
+      return res.json(successResponse([], 'No courses found'));
+    }
+
     res.json(successResponse(data, 'Courses retrieved'));
   } catch (err) {
     next(err);
@@ -31,11 +36,28 @@ export async function getCourse(req, res, next) {
 }
 
 /**
- * Add new course (admin)
+ * Add new course (teacher)
+ * teacherAuth sets req.authenticatedTeacherId
  */
 export async function addCourse(req, res, next) {
   try {
-    const payload = req.body;
+    const payload = { ...req.body };
+
+    if (!req.authenticatedTeacherId) {
+      return res.status(401).json(errorResponse('Unauthorized', 'Teacher not authenticated'));
+    }
+
+    // teacher_id must come from auth middleware
+    payload.teacher_id = req.authenticatedTeacherId;
+
+    // created_at is NOT NULL in DB -> set it here
+    if (!payload.created_at) {
+      payload.created_at = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    }
+
+    // don't store email in course
+    delete payload.teacher_email;
+
     const created = await CourseService.create(payload);
     res.status(201).json(successResponse(created, 'Course created'));
   } catch (err) {
@@ -44,7 +66,7 @@ export async function addCourse(req, res, next) {
 }
 
 /**
- * Edit course (admin)
+ * Edit course (teacher - ownership checked in verifyCourseOwnership middleware)
  */
 export async function editCourse(req, res, next) {
   try {
@@ -57,13 +79,12 @@ export async function editCourse(req, res, next) {
 }
 
 /**
- * Remove course (admin)
+ * Remove course (teacher - ownership checked in verifyCourseOwnership middleware)
  */
 export async function removeCourse(req, res, next) {
   try {
     const removed = await CourseService.remove(req.params.courseId);
     if (!removed) return res.status(404).json(errorResponse('Not found', 'Course not found'));
-    // 204 No Content should not include a body
     res.status(204).end();
   } catch (err) {
     next(err);

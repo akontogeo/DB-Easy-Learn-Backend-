@@ -1,5 +1,6 @@
 import { users as mockUsers, nextUserId } from '../utils/mockData.js';
-import getUserModel from '../models/User.js';
+import { getUserModel } from '../models/User.js';
+  
 import { isDbConnected } from '../config/database.js';
 
 /**
