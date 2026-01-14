@@ -36,7 +36,7 @@ RESTful API backend για educational platform με Node.js, Express και Mar
    npm start
    ```
    
-   Το API θα τρέχει στο `http://localhost:5000`
+   Το API θα τρέχει στο link `http://localhost:5000`
 
 ---
 
