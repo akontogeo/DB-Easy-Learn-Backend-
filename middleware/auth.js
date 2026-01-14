@@ -1,3 +1,59 @@
+// Middleware που επιτρέπει είτε student είτε teacher
+export async function studentOrTeacherAuth(req, res, next) {
+  try {
+    const user = req.user;
+    if (!user || !user.user_email) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Not logged in'
+      });
+    }
+
+    const UserModel = getUserModel();
+    const dbUser = await UserModel.findOne({
+      where: { user_email: user.user_email }
+    });
+    if (!dbUser) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized',
+        message: 'Invalid user'
+      });
+    }
+
+    const StudentModel = getStudentModel();
+    const student = await StudentModel.findOne({
+      where: { student_id: dbUser.user_id }
+    });
+    if (student) {
+      req.authenticatedStudentId = student.student_id;
+      return next();
+    }
+
+    const TeacherModel = getTeacherModel();
+    const teacher = await TeacherModel.findOne({
+      where: { teacher_id: dbUser.user_id }
+    });
+    if (teacher) {
+      req.authenticatedTeacherId = teacher.teacher_id;
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden',
+      message: 'User is neither student nor teacher'
+    });
+  } catch (err) {
+    console.error('studentOrTeacherAuth error:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal Server Error',
+      message: 'Authentication failed'
+    });
+  }
+}
 import auth from 'basic-auth';
 import { DEFAULT_ADMIN } from '../config/constants.js';
 import getUserModel from '../models/User.js';

@@ -1,13 +1,13 @@
 import express from 'express';
 import * as quizCtrl from '../controllers/quizController.js';
 import { authenticate } from '../middleware/authenticate.js';
-import { teacherAuth, studentAuth, verifyCourseOwnership } from '../middleware/auth.js';
+import { teacherAuth, studentAuth, verifyCourseOwnership, studentOrTeacherAuth } from '../middleware/auth.js';
 
 const router = express.Router({ mergeParams: true });
 
 // STUDENTS (JWT required)
-router.get('/', authenticate, studentAuth, quizCtrl.listQuizzes);
-router.get('/:quizId', authenticate, studentAuth, quizCtrl.getQuiz);
+router.get('/', authenticate, studentOrTeacherAuth, quizCtrl.listQuizzes);
+router.get('/:quizId', authenticate, studentOrTeacherAuth, quizCtrl.getQuiz);
 router.post('/:quizId/submit', authenticate, studentAuth, quizCtrl.submitQuiz);
 
 // TEACHER ONLY (must own the course)
